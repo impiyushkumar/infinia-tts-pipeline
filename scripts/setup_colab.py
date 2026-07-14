@@ -162,7 +162,7 @@ print("\n--- Fixing torchaudio (match to installed PyTorch) ---")
 print("  Reinstalling torchaudio...", end=" ", flush=True)
 t0 = time.time()
 result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q", "--force-reinstall", "torchaudio"],
+    [sys.executable, "-m", "pip", "install", "-q", "--force-reinstall", "--no-deps", "torchaudio"],
     capture_output=True, text=True
 )
 elapsed = time.time() - t0
