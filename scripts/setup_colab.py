@@ -109,8 +109,10 @@ INSTALL_GROUPS = {
     ],
 
     # --- English/Arabic TTS: XTTS-v2 (fallback English, primary Arabic) ---
+    # NOTE: Original 'TTS' package (Coqui) is abandoned and requires Python <3.12.
+    # 'coqui-tts' is the community-maintained fork that supports Python 3.12+.
     "xtts-v2": [
-        "TTS",              # Coqui TTS (includes XTTS-v2)
+        "coqui-tts",        # Community fork of Coqui TTS (includes XTTS-v2)
     ],
 
     # --- Hindi TTS: AI4Bharat Indic Parler-TTS (primary) ---
@@ -152,6 +154,26 @@ def pip_install(packages, group_name):
 for group_name, packages in INSTALL_GROUPS.items():
     pip_install(packages, group_name)
 
+# --- Fix torchaudio ABI mismatch ---
+# chatterbox-tts can pull in a torchaudio build that's incompatible with
+# Colab's pre-installed PyTorch (undefined symbol errors). Force-reinstall
+# torchaudio to match the running PyTorch version.
+print("\n--- Fixing torchaudio (match to installed PyTorch) ---")
+print("  Reinstalling torchaudio...", end=" ", flush=True)
+t0 = time.time()
+result = subprocess.run(
+    [sys.executable, "-m", "pip", "install", "-q", "--force-reinstall", "torchaudio"],
+    capture_output=True, text=True
+)
+elapsed = time.time() - t0
+if result.returncode == 0:
+    print(f"[OK] ({elapsed:.1f}s)")
+else:
+    print(f"[FAIL] ({elapsed:.1f}s)")
+    err_lines = result.stderr.strip().split("\n")
+    for line in err_lines[-5:]:
+        print(f"    {line}")
+
 
 # ============================================================
 # 5. VERIFY KEY IMPORTS
@@ -179,7 +201,7 @@ for module, label in IMPORTS_TO_CHECK.items():
         __import__(module)
         print(f"[OK]   {label}")
         import_ok += 1
-    except ImportError as e:
+    except (ImportError, OSError) as e:
         print(f"[FAIL] {label} — {e}")
         import_fail += 1
 
