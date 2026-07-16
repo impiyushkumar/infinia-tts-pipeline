@@ -107,9 +107,18 @@ COLAB_CUDA  = torch.version.cuda          # e.g. "12.8"
 CUDA_TAG    = "cu" + COLAB_CUDA.replace(".", "")  # e.g. "cu128"
 PYTORCH_INDEX = f"https://download.pytorch.org/whl/{CUDA_TAG}"
 
+# Pin transformers globally — coqui-tts uses internal functions like
+# is_flax_available and is_torch_xla_available that were removed in
+# transformers>=4.45. 4.44.2 is the newest version that works for:
+#   - coqui-tts (XTTS-v2): needs is_flax_available  ✓
+#   - MMS-TTS: needs transformers>=4.40              ✓
+#   - parler-tts: needs transformers>=4.40            ✓
+TRANSFORMERS_PIN = "4.44.2"
+
 CONSTRAINTS_PATH = "/tmp/colab_constraints.txt"
 with open(CONSTRAINTS_PATH, "w") as f:
     f.write(f"torch=={COLAB_TORCH}\n")
+    f.write(f"transformers=={TRANSFORMERS_PIN}\n")
     # Also try to pin torchaudio if already installed
     try:
         import torchaudio
@@ -156,10 +165,10 @@ INSTALL_GROUPS = {
     ],
 
     # --- Arabic fallback: Meta MMS-TTS + transformers ---
-    # Pin transformers<4.46 — coqui-tts uses internal functions like
-    # is_torch_xla_available that were removed in transformers>=4.46.
+    # transformers version is globally pinned in the constraints file
+    # to 4.44.2 for coqui-tts compatibility. No per-group pin needed.
     "arabic-mms-fallback": [
-        "transformers<4.46",  # Meta MMS-TTS; pinned for coqui-tts compat
+        "transformers",       # Meta MMS-TTS; version pinned via constraints file
     ],
 }
 
