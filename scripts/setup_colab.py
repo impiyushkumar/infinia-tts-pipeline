@@ -90,8 +90,40 @@ print("\n" + "=" * 60)
 print("STEP 4: Installing Dependencies")
 print("=" * 60)
 
-# Group installs logically so failures are traceable to a specific group.
-# We install in order of: eval harness first (lightest), then TTS models.
+# ── Protect Colab's pre-installed PyTorch ──────────────────────
+# Problem: `pip install chatterbox-tts` (and coqui-tts) can silently
+# upgrade torch/torchaudio to versions built against CUDA 13, which
+# doesn't exist on Colab's runtime (CUDA 12.8). This causes:
+#   - libcudart.so.13: cannot open shared object file
+#   - undefined symbol errors in torchaudio
+#
+# Fix: Write a pip constraints file that pins torch to whatever Colab
+# already has. All subsequent pip installs use -c to respect this.
+
+import torch
+
+COLAB_TORCH = torch.__version__           # e.g. "2.11.0+cu128"
+COLAB_CUDA  = torch.version.cuda          # e.g. "12.8"
+CUDA_TAG    = "cu" + COLAB_CUDA.replace(".", "")  # e.g. "cu128"
+PYTORCH_INDEX = f"https://download.pytorch.org/whl/{CUDA_TAG}"
+
+CONSTRAINTS_PATH = "/tmp/colab_constraints.txt"
+with open(CONSTRAINTS_PATH, "w") as f:
+    f.write(f"torch=={COLAB_TORCH}\n")
+    # Also try to pin torchaudio if already installed
+    try:
+        import torchaudio
+        f.write(f"torchaudio=={torchaudio.__version__}\n")
+    except Exception:
+        pass
+
+print(f"[INFO] Colab PyTorch: {COLAB_TORCH} (CUDA {COLAB_CUDA})")
+print(f"[INFO] Constraints file: {CONSTRAINTS_PATH}")
+print(f"[INFO] PyTorch wheel index: {PYTORCH_INDEX}")
+
+# ── Install groups ────────────────────────────────────────────
+# Ordered: eval harness (lightest) → TTS models (heaviest).
+# All installs use -c constraints to prevent torch version drift.
 
 INSTALL_GROUPS = {
     # --- Eval harness (needed for all 3 languages) ---
@@ -123,46 +155,69 @@ INSTALL_GROUPS = {
         "parler-tts",       # Parler-TTS base; Indic variant may need git install
     ],
 
-    # --- Arabic fallback: Meta MMS-TTS ---
-    # MMS-TTS runs via transformers, which Colab usually has pre-installed.
+    # --- Arabic fallback: Meta MMS-TTS + transformers ---
+    # Pin transformers<4.46 — coqui-tts uses internal functions like
+    # is_torch_xla_available that were removed in transformers>=4.46.
     "arabic-mms-fallback": [
-        "transformers",     # Meta MMS-TTS runs through HuggingFace transformers
+        "transformers<4.46",  # Meta MMS-TTS; pinned for coqui-tts compat
     ],
 }
 
 def pip_install(packages, group_name):
-    """Install a list of packages, log success/failure per package."""
+    """Install a list of packages with Colab torch constraints."""
     print(f"\n--- Installing group: {group_name} ---")
     for pkg in packages:
         print(f"  Installing {pkg}...", end=" ", flush=True)
         t0 = time.time()
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-q", pkg],
+            [sys.executable, "-m", "pip", "install", "-q",
+             "-c", CONSTRAINTS_PATH, pkg],
             capture_output=True, text=True
         )
         elapsed = time.time() - t0
         if result.returncode == 0:
             print(f"[OK] ({elapsed:.1f}s)")
         else:
-            print(f"[FAIL] ({elapsed:.1f}s)")
-            # Print last 5 lines of error for quick diagnosis
-            err_lines = result.stderr.strip().split("\n")
-            for line in err_lines[-5:]:
-                print(f"    {line}")
-            print(f"  [NOTE] {pkg} install failed — this may be handled in the per-language pipeline script.")
+            # Constraint conflict = the package demands a different torch.
+            # Fall back to --no-deps install (we handle deps manually).
+            if "constraint" in result.stderr.lower() or "conflict" in result.stderr.lower():
+                print(f"[RETRY --no-deps] ({elapsed:.1f}s)")
+                print(f"    Constraint conflict detected — retrying without torch deps...")
+                result2 = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-q",
+                     "--no-deps", pkg],
+                    capture_output=True, text=True
+                )
+                if result2.returncode == 0:
+                    print(f"    [OK] Installed {pkg} (no-deps)")
+                else:
+                    print(f"    [FAIL] {pkg} still failed")
+                    err_lines = result2.stderr.strip().split("\n")
+                    for line in err_lines[-3:]:
+                        print(f"      {line}")
+            else:
+                print(f"[FAIL] ({elapsed:.1f}s)")
+                err_lines = result.stderr.strip().split("\n")
+                for line in err_lines[-5:]:
+                    print(f"    {line}")
+                print(f"  [NOTE] {pkg} install failed — will attempt fix in per-language pipeline.")
 
 for group_name, packages in INSTALL_GROUPS.items():
     pip_install(packages, group_name)
 
-# --- Fix torchaudio ABI mismatch ---
-# chatterbox-tts can pull in a torchaudio build that's incompatible with
-# Colab's pre-installed PyTorch (undefined symbol errors). Force-reinstall
-# torchaudio to match the running PyTorch version.
-print("\n--- Fixing torchaudio (match to installed PyTorch) ---")
+# ── Restore torchaudio from PyTorch's CUDA-matched wheel index ─
+# Even with constraints, torchaudio can end up broken if chatterbox-tts
+# pulled a source build or if Colab's pre-installed version had issues.
+# Reinstall from PyTorch's official index which ships CUDA-matched wheels.
+print("\n--- Restoring torchaudio from PyTorch CUDA-matched index ---")
+print(f"  Index: {PYTORCH_INDEX}")
 print("  Reinstalling torchaudio...", end=" ", flush=True)
 t0 = time.time()
 result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q", "--force-reinstall", "--no-deps", "torchaudio"],
+    [sys.executable, "-m", "pip", "install", "-q",
+     "--force-reinstall", "--no-deps",
+     "--extra-index-url", PYTORCH_INDEX,
+     "torchaudio"],
     capture_output=True, text=True
 )
 elapsed = time.time() - t0
@@ -173,6 +228,7 @@ else:
     err_lines = result.stderr.strip().split("\n")
     for line in err_lines[-5:]:
         print(f"    {line}")
+    print("  [NOTE] torchaudio restore failed — Chatterbox may still work without it.")
 
 
 # ============================================================
@@ -316,15 +372,15 @@ for k, v in summary_items.items():
 print("\n--- Package versions (for reproducibility) ---")
 PACKAGES_TO_LOG = [
     "faster_whisper", "jiwer", "resemblyzer", "TTS",
-    "transformers", "soundfile", "librosa", "numpy",
+    "transformers", "soundfile", "librosa", "numpy", "torchaudio",
 ]
 for pkg_name in PACKAGES_TO_LOG:
     try:
         mod = __import__(pkg_name)
         ver = getattr(mod, "__version__", "unknown")
         print(f"  {pkg_name:20s}: {ver}")
-    except ImportError:
-        print(f"  {pkg_name:20s}: NOT INSTALLED")
+    except (ImportError, OSError):
+        print(f"  {pkg_name:20s}: NOT INSTALLED / BROKEN")
 
 print("\n" + "=" * 60)
 print("Setup complete. Proceed to Step 2: English TTS pipeline.")
