@@ -210,19 +210,24 @@ def pip_install(packages, group_name):
 for group_name, packages in INSTALL_GROUPS.items():
     pip_install(packages, group_name)
 
-# ── Restore torchaudio from PyTorch's CUDA-matched wheel index ─
-# Even with constraints, torchaudio can end up broken if chatterbox-tts
-# pulled a source build or if Colab's pre-installed version had issues.
-# Reinstall from PyTorch's official index which ships CUDA-matched wheels.
-print("\n--- Restoring torchaudio from PyTorch CUDA-matched index ---")
+# ── Force torch + torchaudio from PyTorch's CUDA 12.8 wheel index ──
+# Root cause of repeated torchaudio failures: pip packages (coqui-tts etc.)
+# can pull torchaudio from PyPI, which ships wheels built against CUDA 13.
+# Colab only has CUDA 12.8 runtime → libcudart.so.13 not found.
+#
+# Fix: reinstall BOTH torch and torchaudio from PyTorch's own wheel index
+# using --index-url (NOT --extra-index-url) so PyPI is excluded entirely.
+# Then verify torchaudio actually imports and loads its C extension.
+print("\n--- Force-installing torch + torchaudio from PyTorch CUDA 12.8 index ---")
 print(f"  Index: {PYTORCH_INDEX}")
-print("  Reinstalling torchaudio...", end=" ", flush=True)
+print(f"  Pinning: torch=={COLAB_TORCH} + matching torchaudio")
+print("  Installing...", end=" ", flush=True)
 t0 = time.time()
 result = subprocess.run(
     [sys.executable, "-m", "pip", "install", "-q",
      "--force-reinstall", "--no-deps",
-     "--extra-index-url", PYTORCH_INDEX,
-     "torchaudio"],
+     "--index-url", PYTORCH_INDEX,
+     f"torch=={COLAB_TORCH}", "torchaudio"],
     capture_output=True, text=True
 )
 elapsed = time.time() - t0
@@ -233,7 +238,30 @@ else:
     err_lines = result.stderr.strip().split("\n")
     for line in err_lines[-5:]:
         print(f"    {line}")
-    print("  [NOTE] torchaudio restore failed — Chatterbox may still work without it.")
+
+# ── Verify torchaudio actually loads (not just pip version check) ──
+# This catches the libcudart.so.13 error at setup time, not mid-pipeline.
+print("  Verifying torchaudio C extension loads...", end=" ", flush=True)
+try:
+    # Force reimport — clear any cached broken import
+    if "torchaudio" in sys.modules:
+        del sys.modules["torchaudio"]
+    for key in list(sys.modules.keys()):
+        if key.startswith("torchaudio"):
+            del sys.modules[key]
+
+    import torchaudio
+    # Force load the C extension by calling something that needs it
+    _ = torchaudio.info  # this triggers the native library load
+    print(f"[OK] torchaudio {torchaudio.__version__}")
+except OSError as e:
+    print(f"[FAIL] {e}")
+    print("  [ERROR] torchaudio C extension still broken after reinstall.")
+    print("  This means CUDA runtime mismatch persists. Try manually:")
+    print(f"    !pip install torch torchaudio --index-url {PYTORCH_INDEX}")
+    print("  Then restart the Colab runtime and re-run this script.")
+except Exception as e:
+    print(f"[FAIL] Unexpected error: {e}")
 
 
 # ============================================================
