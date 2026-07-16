@@ -29,11 +29,15 @@ Benchmarking 3 open-source TTS pipelines (English, Arabic, Hindi) on Colab T4.
 
 ## Models Used
 
-| Language | Primary Model | Fallback Model |
-|----------|--------------|----------------|
-| English  | Chatterbox   | XTTS-v2 (Coqui) |
-| Hindi    | AI4Bharat Indic Parler-TTS | Indic-TTS |
-| Arabic   | XTTS-v2 (Coqui) | Meta MMS-TTS |
+| Language | Model | Notes |
+|----------|-------|-------|
+| English  | XTTS-v2 (coqui-tts) | Voice cloning from reference audio |
+| Hindi    | AI4Bharat Indic Parler-TTS | Purpose-built for Indic languages |
+| Arabic   | XTTS-v2 (coqui-tts) | Same model as English, Arabic language mode |
+
+> **Note:** Chatterbox was the original English primary choice but was dropped due to
+> persistent build failures on Colab's Python 3.12 runtime. XTTS-v2 handles both
+> English and Arabic — this is documented as a deliberate per-language routing decision.
 
 ## Hardware
 

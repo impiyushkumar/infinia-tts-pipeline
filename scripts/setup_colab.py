@@ -144,14 +144,10 @@ INSTALL_GROUPS = {
         "librosa",          # Audio analysis utilities
     ],
 
-    # --- English TTS: Chatterbox (primary) ---
-    "english-chatterbox": [
-        "chatterbox-tts",   # Resemble AI's Chatterbox
-    ],
-
-    # --- English/Arabic TTS: XTTS-v2 (fallback English, primary Arabic) ---
-    # NOTE: Original 'TTS' package (Coqui) is abandoned and requires Python <3.12.
-    # 'coqui-tts' is the community-maintained fork that supports Python 3.12+.
+    # --- English + Arabic TTS: XTTS-v2 (via coqui-tts fork) ---
+    # Chatterbox was dropped (persistent build failures on Colab Python 3.12).
+    # XTTS-v2 handles both English and Arabic. coqui-tts is the community
+    # fork of the abandoned Coqui TTS package, supporting Python 3.12+.
     "xtts-v2": [
         "coqui-tts",        # Community fork of Coqui TTS (includes XTTS-v2)
     ],
@@ -276,8 +272,7 @@ print(f"\n  {import_ok} OK, {import_fail} FAIL out of {len(IMPORTS_TO_CHECK)} ch
 # special handling in per-language scripts)
 print("\n--- TTS model imports (non-blocking) ---")
 TTS_IMPORTS = {
-    "chatterbox.tts": "Chatterbox TTS (English primary)",
-    "TTS.api":        "Coqui TTS / XTTS-v2 (English fallback / Arabic primary)",
+    "TTS.api":        "Coqui TTS / XTTS-v2 (English + Arabic)",
 }
 for module, label in TTS_IMPORTS.items():
     try:
