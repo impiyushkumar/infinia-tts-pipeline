@@ -147,7 +147,8 @@ INSTALL_GROUPS = {
         "coqui-tts",        # Community fork of Coqui TTS (includes XTTS-v2)
     ],
     "hindi-parler": [
-        "parler-tts",       # Parler-TTS base; Indic variant may need git install
+        "parler-tts",              # Parler-TTS base; Indic variant may need git install
+        "descript-audio-codec",    # Required by parler-tts (provides 'dac' module)
     ],
     "arabic-mms-fallback": [
         "transformers",     # Meta MMS-TTS; version pinned via constraints file
