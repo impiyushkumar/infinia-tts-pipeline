@@ -141,12 +141,20 @@ def roundtrip_wer(generated_audio_path, input_text, language="en", whisper_model
 
 
 # ============================================================
-# 4. SPEAKER COSINE SIMILARITY
+# 4. SPEAKER COSINE SIMILARITY (MFCC-based)
 # ============================================================
 def speaker_cosine_similarity(reference_audio_path, generated_audio_path):
     """
-    Compare speaker identity between reference and generated audio using
-    resemblyzer speaker embeddings. Returns cosine similarity score.
+    Compare speaker similarity between reference and generated audio using
+    MFCC-based cosine similarity.
+
+    Uses librosa to extract MFCC features, averages across time frames to
+    get a single feature vector per clip, then computes cosine similarity.
+
+    Limitation (noted in final write-up): This is a simpler proxy than a
+    dedicated speaker-embedding model like resemblyzer. It captures timbral
+    similarity but is less robust to variations in content/prosody.
+    resemblyzer was dropped due to numpy 2.x incompatibility.
 
     Args:
         reference_audio_path: Path to reference voice clip
@@ -155,43 +163,38 @@ def speaker_cosine_similarity(reference_audio_path, generated_audio_path):
     Returns:
         dict with:
             - cosine_similarity: float between -1 and 1. Target: ≥0.75
+            - method: description of similarity method used
             - reference_file: basename of reference audio
             - generated_file: basename of generated audio
     """
     import os
     import numpy as np
-    from resemblyzer import VoiceEncoder, preprocess_wav
+    import librosa
 
     if not os.path.exists(reference_audio_path):
         raise FileNotFoundError(f"Reference audio not found: {reference_audio_path}")
     if not os.path.exists(generated_audio_path):
         raise FileNotFoundError(f"Generated audio not found: {generated_audio_path}")
 
-    # Load encoder (reuse if already loaded)
-    global _voice_encoder
-    if "_voice_encoder" not in globals():
-        _voice_encoder = None
+    # Load audio and extract MFCCs (20 coefficients is standard)
+    ref_audio, ref_sr = librosa.load(reference_audio_path, sr=16000)
+    gen_audio, gen_sr = librosa.load(generated_audio_path, sr=16000)
 
-    if _voice_encoder is None:
-        print("  [SIM] Loading resemblyzer voice encoder...", flush=True)
-        _voice_encoder = VoiceEncoder()
+    ref_mfcc = librosa.feature.mfcc(y=ref_audio, sr=16000, n_mfcc=20)
+    gen_mfcc = librosa.feature.mfcc(y=gen_audio, sr=16000, n_mfcc=20)
 
-    encoder = _voice_encoder
-
-    # Preprocess and embed
-    ref_wav = preprocess_wav(reference_audio_path)
-    gen_wav = preprocess_wav(generated_audio_path)
-
-    ref_embed = encoder.embed_utterance(ref_wav)
-    gen_embed = encoder.embed_utterance(gen_wav)
+    # Average across time frames to get a single vector per clip
+    ref_vec = np.mean(ref_mfcc, axis=1)
+    gen_vec = np.mean(gen_mfcc, axis=1)
 
     # Cosine similarity
-    cosine_sim = np.dot(ref_embed, gen_embed) / (
-        np.linalg.norm(ref_embed) * np.linalg.norm(gen_embed)
-    )
+    dot = np.dot(ref_vec, gen_vec)
+    norm = np.linalg.norm(ref_vec) * np.linalg.norm(gen_vec)
+    cosine_sim = dot / norm if norm > 0 else 0.0
 
     return {
         "cosine_similarity": float(cosine_sim),
+        "method": "MFCC mean vector cosine similarity (librosa, 20 coefficients)",
         "reference_file": os.path.basename(reference_audio_path),
         "generated_file": os.path.basename(generated_audio_path),
     }
@@ -201,24 +204,20 @@ def speaker_cosine_similarity(reference_audio_path, generated_audio_path):
 # CLEANUP — free GPU memory from cached models
 # ============================================================
 def cleanup():
-    """Free GPU memory from cached whisper/resemblyzer models."""
+    """Free GPU memory from cached whisper models."""
     import torch
-    global _whisper_cache, _voice_encoder
+    global _whisper_cache
 
     if "_whisper_cache" in globals() and _whisper_cache:
         _whisper_cache.clear()
         print("[EVAL] Cleared whisper model cache")
-
-    if "_voice_encoder" in globals() and _voice_encoder is not None:
-        _voice_encoder = None
-        print("[EVAL] Cleared voice encoder cache")
 
     torch.cuda.empty_cache()
     print("[EVAL] GPU cache cleared")
 
 
 # ============================================================
-# MAIN — self-test with synthetic audio
+# MAIN — self-test
 # ============================================================
 if __name__ == "__main__":
     print("=" * 60)
@@ -242,8 +241,6 @@ if __name__ == "__main__":
     assert 50 < latency < 300, f"Latency test failed: {latency}"
     print("  [PASS]")
 
-    # Note: roundtrip_wer and speaker_cosine_similarity require real audio files.
-    # They'll be tested as part of the pipeline runs, not here.
     print("\n--- roundtrip_wer ---")
     print("  [SKIP] Requires real audio files — tested during pipeline runs")
 
@@ -251,6 +248,6 @@ if __name__ == "__main__":
     print("  [SKIP] Requires real audio files — tested during pipeline runs")
 
     print("\n" + "=" * 60)
-    print("Eval harness self-test complete. RTF + latency functions verified.")
-    print("WER + speaker similarity will be tested with real pipeline output.")
+    print("Eval harness self-test complete.")
     print("=" * 60)
+

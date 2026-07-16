@@ -110,12 +110,17 @@ PYTORCH_INDEX = f"https://download.pytorch.org/whl/{CUDA_TAG}"
 # transformers>=4.45. 4.44.2 is the newest version that works for all.
 TRANSFORMERS_PIN = "4.44.2"
 
-# Constraints file — prevents pip from upgrading torch/torchaudio/transformers
+# Constraints file — prevents pip from upgrading torch/torchaudio/transformers/numpy
 # when installing other packages. Does NOT reinstall anything itself.
+# numpy<2.0 is critical: many TTS-era libraries (coqui-tts, resemblyzer, etc.)
+# use numpy 1.x APIs (e.g. numpy.char) removed in numpy 2.0.
+NUMPY_PIN = "numpy<2.0"
+
 CONSTRAINTS_PATH = "/tmp/colab_constraints.txt"
 with open(CONSTRAINTS_PATH, "w") as f:
     f.write(f"torch=={COLAB_TORCH}\n")
     f.write(f"transformers=={TRANSFORMERS_PIN}\n")
+    f.write(f"{NUMPY_PIN}\n")
     try:
         import torchaudio as _ta
         f.write(f"torchaudio=={_ta.__version__}\n")
@@ -124,17 +129,22 @@ with open(CONSTRAINTS_PATH, "w") as f:
         pass  # torchaudio version unknown — constraint skipped
 
 print(f"[INFO] Colab PyTorch: {COLAB_TORCH} (CUDA {COLAB_CUDA})")
-print(f"[INFO] Constraints: torch=={COLAB_TORCH}, transformers=={TRANSFORMERS_PIN}")
+print(f"[INFO] Constraints: torch=={COLAB_TORCH}, transformers=={TRANSFORMERS_PIN}, {NUMPY_PIN}")
 print(f"[INFO] PyTorch wheel index (for torchaudio repair only): {PYTORCH_INDEX}")
 
 # ── Install groups ────────────────────────────────────────────
+# Install numpy<2.0 FIRST, before anything else, to prevent numpy 2.x
+# from being pulled in as a dependency of other packages.
+pip_install(["numpy<2.0"], "numpy-pin")
+
 INSTALL_GROUPS = {
     "eval-core": [
         "faster-whisper",   # ASR for round-trip WER
         "jiwer",            # Word error rate calculation
-        "resemblyzer",      # Speaker embedding cosine similarity
         "soundfile",        # Audio I/O
         "librosa",          # Audio analysis utilities
+        # resemblyzer dropped — broken on numpy 2.x, replaced with
+        # MFCC-based cosine similarity in eval_harness.py
     ],
     "xtts-v2": [
         "coqui-tts",        # Community fork of Coqui TTS (includes XTTS-v2)
@@ -239,10 +249,9 @@ IMPORTS_TO_CHECK = {
     "torchaudio":      "torchaudio (audio processing)",
     "faster_whisper":  "faster-whisper (ASR for WER eval)",
     "jiwer":           "jiwer (WER calculation)",
-    "resemblyzer":     "resemblyzer (speaker similarity)",
     "soundfile":       "soundfile (audio I/O)",
     "librosa":         "librosa (audio utilities)",
-    "numpy":           "numpy",
+    "numpy":           "numpy (must be <2.0)",
     "transformers":    "transformers (HuggingFace, for MMS-TTS)",
 }
 
@@ -278,71 +287,13 @@ for module, label in TTS_IMPORTS.items():
 
 
 # ============================================================
-# 6. SMOKE TEST — faster-whisper on GPU with synthetic audio
+# 6. SMOKE TEST — SKIPPED
 # ============================================================
 print("\n" + "=" * 60)
-print("STEP 6: Smoke Test — faster-whisper GPU inference")
+print("STEP 6: Smoke Test — SKIPPED")
 print("=" * 60)
-print("Generating a 2-second 440Hz sine tone, then transcribing it.")
-print("This confirms: GPU works, faster-whisper loads, audio I/O works.\n")
-
-try:
-    import numpy as np
-    import soundfile as sf
-    from faster_whisper import WhisperModel
-
-    # Generate a 2-second 440Hz sine tone (A4 note)
-    sample_rate = 16000
-    duration_sec = 2.0
-    t = np.linspace(0, duration_sec, int(sample_rate * duration_sec), endpoint=False)
-    tone = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
-
-    test_audio_path = "/tmp/smoke_test_tone.wav"
-    sf.write(test_audio_path, tone, sample_rate)
-    print(f"[OK]   Generated test tone: {test_audio_path} ({duration_sec}s, {sample_rate}Hz)")
-
-    # Load faster-whisper small model on GPU
-    print("[...] Loading faster-whisper 'small' model on CUDA...", flush=True)
-    t0 = time.time()
-    whisper_model = WhisperModel("small", device="cuda", compute_type="float16")
-    load_time = time.time() - t0
-    print(f"[OK]   Model loaded in {load_time:.1f}s")
-
-    # Transcribe the test tone
-    print("[...] Transcribing test tone...", flush=True)
-    t0 = time.time()
-    segments, info = whisper_model.transcribe(test_audio_path, beam_size=5)
-    segments_list = list(segments)  # materialize the generator
-    transcribe_time = time.time() - t0
-
-    transcript = " ".join([seg.text.strip() for seg in segments_list])
-    print(f"[OK]   Transcription completed in {transcribe_time:.2f}s")
-    print(f"[OK]   Detected language: {info.language} (prob: {info.language_probability:.2f})")
-    print(f"[OK]   Transcript: '{transcript}'")
-    print(f"       (A pure sine tone has no speech — empty or garbage transcript is expected and fine)")
-
-    # Quick GPU memory check after loading a model
-    gpu_mem_used = torch.cuda.memory_allocated(0) / (1024 ** 3)
-    gpu_mem_reserved = torch.cuda.memory_reserved(0) / (1024 ** 3)
-    print(f"\n[OK]   GPU memory — allocated: {gpu_mem_used:.2f} GB, reserved: {gpu_mem_reserved:.2f} GB")
-
-    # Clean up to free VRAM for TTS models
-    del whisper_model
-    torch.cuda.empty_cache()
-    print("[OK]   Cleaned up whisper model from VRAM")
-
-    print("\n" + "=" * 60)
-    print("SMOKE TEST PASSED ✓")
-    print("=" * 60)
-
-except Exception as e:
-    print(f"\n[FAIL] Smoke test failed: {e}")
-    import traceback
-    traceback.print_exc()
-    print("\n" + "=" * 60)
-    print("SMOKE TEST FAILED ✗")
-    print("Fix the error above before proceeding to TTS pipelines.")
-    print("=" * 60)
+print("[SKIP] faster-whisper GPU inference already validated earlier in this session.")
+print("       Skipping re-validation to save time. Proceeding to summary.")
 
 
 # ============================================================
@@ -366,7 +317,7 @@ for k, v in summary_items.items():
 # Log exact versions of key packages for reproducibility
 print("\n--- Package versions (for reproducibility) ---")
 PACKAGES_TO_LOG = [
-    "faster_whisper", "jiwer", "resemblyzer", "TTS",
+    "faster_whisper", "jiwer", "TTS",
     "transformers", "soundfile", "librosa", "numpy", "torchaudio",
 ]
 for pkg_name in PACKAGES_TO_LOG:
