@@ -133,9 +133,6 @@ print(f"[INFO] Constraints: torch=={COLAB_TORCH}, transformers=={TRANSFORMERS_PI
 print(f"[INFO] PyTorch wheel index (for torchaudio repair only): {PYTORCH_INDEX}")
 
 # ── Install groups ────────────────────────────────────────────
-# Install numpy<2.0 FIRST, before anything else, to prevent numpy 2.x
-# from being pulled in as a dependency of other packages.
-pip_install(["numpy<2.0"], "numpy-pin")
 
 INSTALL_GROUPS = {
     "eval-core": [
@@ -189,6 +186,10 @@ def pip_install(packages, group_name):
                 for line in result.stderr.strip().split("\n")[-5:]:
                     print(f"    {line}")
                 print(f"  [NOTE] {pkg} install failed — will attempt fix in per-language pipeline.")
+
+# Install numpy<2.0 FIRST, before anything else, to prevent numpy 2.x
+# from being pulled in as a dependency of other packages.
+pip_install(["numpy<2.0"], "numpy-pin")
 
 for group_name, packages in INSTALL_GROUPS.items():
     pip_install(packages, group_name)
