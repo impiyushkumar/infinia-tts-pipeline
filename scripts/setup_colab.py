@@ -90,15 +90,13 @@ print("\n" + "=" * 60)
 print("STEP 4: Installing Dependencies")
 print("=" * 60)
 
-# ── Protect Colab's pre-installed PyTorch ──────────────────────
-# Problem: `pip install chatterbox-tts` (and coqui-tts) can silently
-# upgrade torch/torchaudio to versions built against CUDA 13, which
-# doesn't exist on Colab's runtime (CUDA 12.8). This causes:
-#   - libcudart.so.13: cannot open shared object file
-#   - undefined symbol errors in torchaudio
-#
-# Fix: Write a pip constraints file that pins torch to whatever Colab
-# already has. All subsequent pip installs use -c to respect this.
+# ── Detect Colab's pre-installed PyTorch (DO NOT MODIFY IT) ────
+# Colab ships torch+torchaudio matched to its CUDA runtime. Previous
+# attempts to force-reinstall torch broke CUDA support. Strategy now:
+#   1. Record Colab's torch version dynamically
+#   2. Use a pip constraints file to PREVENT other packages from upgrading it
+#   3. After all installs, TEST if torchaudio still works
+#   4. Only if broken, reinstall ONLY torchaudio (never torch) from matching index
 
 import torch
 
@@ -109,33 +107,28 @@ PYTORCH_INDEX = f"https://download.pytorch.org/whl/{CUDA_TAG}"
 
 # Pin transformers globally — coqui-tts uses internal functions like
 # is_flax_available and is_torch_xla_available that were removed in
-# transformers>=4.45. 4.44.2 is the newest version that works for:
-#   - coqui-tts (XTTS-v2): needs is_flax_available  ✓
-#   - MMS-TTS: needs transformers>=4.40              ✓
-#   - parler-tts: needs transformers>=4.40            ✓
+# transformers>=4.45. 4.44.2 is the newest version that works for all.
 TRANSFORMERS_PIN = "4.44.2"
 
+# Constraints file — prevents pip from upgrading torch/torchaudio/transformers
+# when installing other packages. Does NOT reinstall anything itself.
 CONSTRAINTS_PATH = "/tmp/colab_constraints.txt"
 with open(CONSTRAINTS_PATH, "w") as f:
     f.write(f"torch=={COLAB_TORCH}\n")
     f.write(f"transformers=={TRANSFORMERS_PIN}\n")
-    # Also try to pin torchaudio if already installed
     try:
-        import torchaudio
-        f.write(f"torchaudio=={torchaudio.__version__}\n")
+        import torchaudio as _ta
+        f.write(f"torchaudio=={_ta.__version__}\n")
+        del _ta
     except Exception:
-        pass
+        pass  # torchaudio version unknown — constraint skipped
 
 print(f"[INFO] Colab PyTorch: {COLAB_TORCH} (CUDA {COLAB_CUDA})")
-print(f"[INFO] Constraints file: {CONSTRAINTS_PATH}")
-print(f"[INFO] PyTorch wheel index: {PYTORCH_INDEX}")
+print(f"[INFO] Constraints: torch=={COLAB_TORCH}, transformers=={TRANSFORMERS_PIN}")
+print(f"[INFO] PyTorch wheel index (for torchaudio repair only): {PYTORCH_INDEX}")
 
 # ── Install groups ────────────────────────────────────────────
-# Ordered: eval harness (lightest) → TTS models (heaviest).
-# All installs use -c constraints to prevent torch version drift.
-
 INSTALL_GROUPS = {
-    # --- Eval harness (needed for all 3 languages) ---
     "eval-core": [
         "faster-whisper",   # ASR for round-trip WER
         "jiwer",            # Word error rate calculation
@@ -143,33 +136,19 @@ INSTALL_GROUPS = {
         "soundfile",        # Audio I/O
         "librosa",          # Audio analysis utilities
     ],
-
-    # --- English + Arabic TTS: XTTS-v2 (via coqui-tts fork) ---
-    # Chatterbox was dropped (persistent build failures on Colab Python 3.12).
-    # XTTS-v2 handles both English and Arabic. coqui-tts is the community
-    # fork of the abandoned Coqui TTS package, supporting Python 3.12+.
     "xtts-v2": [
         "coqui-tts",        # Community fork of Coqui TTS (includes XTTS-v2)
     ],
-
-    # --- Hindi TTS: AI4Bharat Indic Parler-TTS (primary) ---
-    # NOTE: This may need to be installed from git. We attempt pip first,
-    # and fall back to git clone if it fails. We'll handle this in the
-    # Hindi pipeline script if needed.
     "hindi-parler": [
         "parler-tts",       # Parler-TTS base; Indic variant may need git install
     ],
-
-    # --- Arabic fallback: Meta MMS-TTS + transformers ---
-    # transformers version is globally pinned in the constraints file
-    # to 4.44.2 for coqui-tts compatibility. No per-group pin needed.
     "arabic-mms-fallback": [
-        "transformers",       # Meta MMS-TTS; version pinned via constraints file
+        "transformers",     # Meta MMS-TTS; version pinned via constraints file
     ],
 }
 
 def pip_install(packages, group_name):
-    """Install a list of packages with Colab torch constraints."""
+    """Install packages with constraints to prevent torch/transformers drift."""
     print(f"\n--- Installing group: {group_name} ---")
     for pkg in packages:
         print(f"  Installing {pkg}...", end=" ", flush=True)
@@ -183,85 +162,69 @@ def pip_install(packages, group_name):
         if result.returncode == 0:
             print(f"[OK] ({elapsed:.1f}s)")
         else:
-            # Constraint conflict = the package demands a different torch.
-            # Fall back to --no-deps install (we handle deps manually).
             if "constraint" in result.stderr.lower() or "conflict" in result.stderr.lower():
                 print(f"[RETRY --no-deps] ({elapsed:.1f}s)")
-                print(f"    Constraint conflict detected — retrying without torch deps...")
                 result2 = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-q",
-                     "--no-deps", pkg],
+                    [sys.executable, "-m", "pip", "install", "-q", "--no-deps", pkg],
                     capture_output=True, text=True
                 )
                 if result2.returncode == 0:
                     print(f"    [OK] Installed {pkg} (no-deps)")
                 else:
                     print(f"    [FAIL] {pkg} still failed")
-                    err_lines = result2.stderr.strip().split("\n")
-                    for line in err_lines[-3:]:
+                    for line in result2.stderr.strip().split("\n")[-3:]:
                         print(f"      {line}")
             else:
                 print(f"[FAIL] ({elapsed:.1f}s)")
-                err_lines = result.stderr.strip().split("\n")
-                for line in err_lines[-5:]:
+                for line in result.stderr.strip().split("\n")[-5:]:
                     print(f"    {line}")
                 print(f"  [NOTE] {pkg} install failed — will attempt fix in per-language pipeline.")
 
 for group_name, packages in INSTALL_GROUPS.items():
     pip_install(packages, group_name)
 
-# ── Force torch + torchaudio from PyTorch's CUDA 12.8 wheel index ──
-# Root cause of repeated torchaudio failures: pip packages (coqui-tts etc.)
-# can pull torchaudio from PyPI, which ships wheels built against CUDA 13.
-# Colab only has CUDA 12.8 runtime → libcudart.so.13 not found.
-#
-# Fix: reinstall BOTH torch and torchaudio from PyTorch's own wheel index
-# using --index-url (NOT --extra-index-url) so PyPI is excluded entirely.
-# Then verify torchaudio actually imports and loads its C extension.
-print("\n--- Force-installing torch + torchaudio from PyTorch CUDA 12.8 index ---")
-print(f"  Index: {PYTORCH_INDEX}")
-print(f"  Pinning: torch=={COLAB_TORCH} + matching torchaudio")
-print("  Installing...", end=" ", flush=True)
-t0 = time.time()
-result = subprocess.run(
-    [sys.executable, "-m", "pip", "install", "-q",
-     "--force-reinstall", "--no-deps",
-     "--index-url", PYTORCH_INDEX,
-     f"torch=={COLAB_TORCH}", "torchaudio"],
-    capture_output=True, text=True
-)
-elapsed = time.time() - t0
-if result.returncode == 0:
-    print(f"[OK] ({elapsed:.1f}s)")
-else:
-    print(f"[FAIL] ({elapsed:.1f}s)")
-    err_lines = result.stderr.strip().split("\n")
-    for line in err_lines[-5:]:
-        print(f"    {line}")
+# ── Test-first torchaudio repair ──────────────────────────────
+# Only touch torchaudio if it's actually broken. On a fresh Colab runtime
+# it should work out of the box. If a package install above silently
+# replaced it with a CUDA-mismatched version, we reinstall ONLY torchaudio
+# (never torch) from PyTorch's CUDA-matched wheel index.
+print("\n--- Checking torchaudio health ---")
 
-# ── Verify torchaudio actually loads (not just pip version check) ──
-# This catches the libcudart.so.13 error at setup time, not mid-pipeline.
-print("  Verifying torchaudio C extension loads...", end=" ", flush=True)
-try:
-    # Force reimport — clear any cached broken import
-    if "torchaudio" in sys.modules:
-        del sys.modules["torchaudio"]
+def _test_torchaudio_import():
+    """Try importing torchaudio and loading its C extension. Returns (ok, info_str)."""
     for key in list(sys.modules.keys()):
         if key.startswith("torchaudio"):
             del sys.modules[key]
+    try:
+        import torchaudio
+        _ = torchaudio.info  # triggers native library load
+        return True, torchaudio.__version__
+    except Exception as e:
+        return False, str(e)
 
-    import torchaudio
-    # Force load the C extension by calling something that needs it
-    _ = torchaudio.info  # this triggers the native library load
-    print(f"[OK] torchaudio {torchaudio.__version__}")
-except OSError as e:
-    print(f"[FAIL] {e}")
-    print("  [ERROR] torchaudio C extension still broken after reinstall.")
-    print("  This means CUDA runtime mismatch persists. Try manually:")
-    print(f"    !pip install torch torchaudio --index-url {PYTORCH_INDEX}")
-    print("  Then restart the Colab runtime and re-run this script.")
-except Exception as e:
-    print(f"[FAIL] Unexpected error: {e}")
+ta_ok, ta_info = _test_torchaudio_import()
+
+if ta_ok:
+    print(f"[OK]   torchaudio {ta_info} — imports cleanly, no repair needed")
+else:
+    print(f"[WARN] torchaudio broken: {ta_info}")
+    print(f"       Reinstalling ONLY torchaudio (not torch) from {PYTORCH_INDEX}...")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "-q",
+         "--no-deps", "--index-url", PYTORCH_INDEX, "torchaudio"],
+        capture_output=True, text=True
+    )
+    if result.returncode == 0:
+        ta_ok2, ta_info2 = _test_torchaudio_import()
+        if ta_ok2:
+            print(f"[OK]   torchaudio {ta_info2} — repaired successfully")
+        else:
+            print(f"[FAIL] torchaudio still broken after repair: {ta_info2}")
+            print("       Restart Colab runtime and re-run this script.")
+    else:
+        print("[FAIL] torchaudio reinstall command failed")
+        for line in result.stderr.strip().split("\n")[-3:]:
+            print(f"       {line}")
 
 
 # ============================================================
