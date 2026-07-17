@@ -89,8 +89,9 @@ if REFERENCE and os.path.exists(REFERENCE):
         print(f"  Method:           {sim_result['method']}")
         print(f"  Reference:        {sim_result['reference_file']}")
         print(f"  Generated:        {sim_result['generated_file']}")
-        print(f"\n  NOTE: Parler-TTS uses description-based voice (not cloning),")
+        print(f"\n  NOTE: MMS-TTS uses a fixed speaker voice (no cloning),")
         print(f"        so low similarity to your reference voice is expected.")
+        print(f"        Report as 'N/A — no cloning' in results_table.md.")
     except Exception as e:
         print(f"  [FAIL] Similarity measurement failed: {e}")
         import traceback
@@ -140,5 +141,5 @@ else:
 print(f"  {'MOS':<25} {'TODO':<15} {'≥4.0/5':<15} {'human rating'}")
 
 print("\n  NOTE: Hindi WER may be higher than English due to Whisper ASR limitations.")
-print("  NOTE: Speaker sim expected low — Parler-TTS uses description, not cloning.")
+print("  NOTE: Speaker sim N/A — MMS-TTS has no voice cloning, fixed speaker only.")
 print("=" * 60)
