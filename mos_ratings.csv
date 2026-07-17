@@ -1,11 +1,7 @@
-filename,language,model,rater,naturalness_mos,notes
-# Instructions:
-# - Listen to each clip and rate naturalness on a 1-5 scale
-# - 1 = completely robotic/unintelligible
-# - 2 = clearly synthetic, hard to listen to
-# - 3 = acceptable but obviously synthetic
-# - 4 = good, minor artifacts
-# - 5 = indistinguishable from human
-# - Fill this in MANUALLY after listening — do not auto-generate scores
-#
-# TODO: Add rows after clips are generated from real Colab runs
+clip_filename,language,model,category,mos_score,notes
+en_test_01_warmup.wav,English,XTTS-v2,warmup,4,
+en_test_02_warm.wav,English,XTTS-v2,benchmark,4,
+hi_test_01_warmup.wav,Hindi,MMS-TTS-hin,warmup,3,
+hi_test_02_warm.wav,Hindi,MMS-TTS-hin,benchmark,3,
+ar_test_01_warmup.wav,Arabic,XTTS-v2,warmup,3,
+ar_test_02_warm.wav,Arabic,XTTS-v2,benchmark,3,
