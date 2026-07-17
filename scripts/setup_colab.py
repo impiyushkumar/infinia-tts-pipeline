@@ -146,12 +146,12 @@ INSTALL_GROUPS = {
     "xtts-v2": [
         "coqui-tts",        # Community fork of Coqui TTS (includes XTTS-v2)
     ],
-    "hindi-parler": [
-        "parler-tts",              # Parler-TTS base; Indic variant may need git install
-        "descript-audio-codec",    # Required by parler-tts (provides 'dac' module)
-    ],
-    "arabic-mms-fallback": [
-        "transformers",     # Meta MMS-TTS; version pinned via constraints file
+    # --- Hindi + Arabic TTS: Meta MMS-TTS ---
+    # Hindi uses facebook/mms-tts-hin, Arabic fallback uses facebook/mms-tts-ara.
+    # Both run via transformers VitsModel — no extra packages beyond transformers.
+    # Indic Parler-TTS was dropped (HF gating + version conflicts).
+    "mms-tts": [
+        "transformers",     # MMS-TTS runs via VitsModel; version pinned via constraints
     ],
 }
 

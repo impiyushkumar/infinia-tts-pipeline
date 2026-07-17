@@ -1,11 +1,11 @@
 """
-pipeline_hindi.py — Hindi TTS Pipeline using AI4Bharat Indic Parler-TTS
+pipeline_hindi.py — Hindi TTS Pipeline using Meta MMS-TTS
 Infinia Multilingual TTS Case Study
 
-Model: AI4Bharat Indic Parler-TTS (purpose-built for Indic languages)
-Note: Parler-TTS uses text descriptions for voice control, NOT voice cloning.
-      The reference_audio_path parameter is accepted for API consistency but
-      is not used for cloning — this is a known limitation vs XTTS-v2.
+Model: facebook/mms-tts-hin (Meta Massively Multilingual Speech)
+Note: MMS-TTS is a VITS-based model — no voice cloning capability.
+      Generates speech with a fixed speaker voice.
+      Indic Parler-TTS was dropped (HuggingFace gating + version conflicts).
 Hardware: Colab T4 GPU (16GB VRAM)
 
 Usage:
@@ -22,12 +22,8 @@ import torch
 # ============================================================
 OUTPUT_DIR = "/content/drive/MyDrive/infinia-tts-case-study/clips/hindi"
 REFERENCE_DIR = "/content/drive/MyDrive/infinia-tts-case-study/reference_clips"
-MODEL_NAME = "ai4bharat/indic-parler-tts"
+MODEL_NAME = "facebook/mms-tts-hin"
 LANGUAGE = "hi"
-
-# Voice description for Parler-TTS (controls speaker characteristics)
-# Parler-TTS doesn't clone from reference audio — it uses text descriptions.
-VOICE_DESCRIPTION = "A male speaker with a clear, natural Indian Hindi accent, speaking at a moderate pace in a calm and articulate tone."
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -37,52 +33,25 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # ============================================================
 def load_model():
     """
-    Load Indic Parler-TTS model onto GPU.
+    Load MMS-TTS Hindi model onto GPU.
     Returns (model, tokenizer) tuple.
     """
-    from parler_tts import ParlerTTSForConditionalGeneration
-    from transformers import AutoTokenizer
+    from transformers import VitsModel, VitsTokenizer
 
-    print(f"[...] Loading Indic Parler-TTS: {MODEL_NAME}")
-    print(f"[...] This downloads the model on first run...", flush=True)
+    print(f"[...] Loading MMS-TTS Hindi: {MODEL_NAME}")
+    print(f"[...] Downloading model on first run...", flush=True)
 
     t0 = time.time()
-    
-    # Try primary model, fall back to alternatives if not found
-    model_candidates = [
-        MODEL_NAME,
-        "ai4bharat/indic-parler-tts-pretrained",
-        "ai4bharat/indic-parler-tts-hindi",
-    ]
-    
-    model = None
-    tokenizer = None
-    used_model = None
-    
-    for candidate in model_candidates:
-        try:
-            print(f"[...] Trying model: {candidate}...", flush=True)
-            tokenizer = AutoTokenizer.from_pretrained(candidate)
-            model = ParlerTTSForConditionalGeneration.from_pretrained(candidate).to("cuda")
-            used_model = candidate
-            break
-        except Exception as e:
-            print(f"[WARN] {candidate} failed: {e}")
-            continue
-    
-    if model is None:
-        print("[FAIL] No Indic Parler-TTS model could be loaded.")
-        print("       Check HuggingFace for the correct model ID:")
-        print("       https://huggingface.co/ai4bharat")
-        sys.exit(1)
-    
+    tokenizer = VitsTokenizer.from_pretrained(MODEL_NAME)
+    model = VitsModel.from_pretrained(MODEL_NAME).to("cuda")
     load_time = time.time() - t0
-    print(f"[OK]  Model loaded: {used_model} in {load_time:.1f}s")
+
+    print(f"[OK]  Model loaded in {load_time:.1f}s")
 
     gpu_mem = torch.cuda.memory_allocated(0) / (1024 ** 3)
     print(f"[OK]  GPU memory after load: {gpu_mem:.2f} GB")
 
-    return model, tokenizer, used_model
+    return model, tokenizer
 
 
 # ============================================================
@@ -90,23 +59,22 @@ def load_model():
 # ============================================================
 def generate(model_tuple, text, reference_audio_path=None, output_filename=None):
     """
-    Generate Hindi speech from text using Indic Parler-TTS.
+    Generate Hindi speech from text using MMS-TTS.
 
     Args:
-        model_tuple: (model, tokenizer, model_name) from load_model()
+        model_tuple: (model, tokenizer) from load_model()
         text: Input text in Hindi (Devanagari script)
-        reference_audio_path: NOT USED for cloning (Parler-TTS uses descriptions).
+        reference_audio_path: NOT USED (MMS-TTS has no voice cloning).
                               Accepted for API consistency with pipeline_english.py.
         output_filename: Optional output filename (auto-generated if None)
 
     Returns:
         dict with wav_path, generation_time, audio_duration, text, etc.
     """
-    model, tokenizer, model_name = model_tuple
+    model, tokenizer = model_tuple
 
     if reference_audio_path:
-        print(f"[NOTE] reference_audio_path provided but Parler-TTS uses text descriptions,")
-        print(f"       not voice cloning. Reference is ignored for generation.")
+        print(f"[NOTE] reference_audio_path ignored — MMS-TTS has no voice cloning.")
 
     # Generate output filename
     if output_filename is None:
@@ -117,27 +85,20 @@ def generate(model_tuple, text, reference_audio_path=None, output_filename=None)
     wav_path = os.path.join(OUTPUT_DIR, output_filename)
 
     print(f"\n[GEN] Text: \"{text}\"")
-    print(f"[GEN] Voice: \"{VOICE_DESCRIPTION[:60]}...\"")
     print(f"[GEN] Language: {LANGUAGE}")
 
     # --- Tokenize ---
-    description_tokens = tokenizer(VOICE_DESCRIPTION, return_tensors="pt").to("cuda")
-    prompt_tokens = tokenizer(text, return_tensors="pt").to("cuda")
+    inputs = tokenizer(text, return_tensors="pt").to("cuda")
 
     # --- Inference ---
     t0 = time.time()
     with torch.no_grad():
-        generation = model.generate(
-            input_ids=description_tokens.input_ids,
-            attention_mask=description_tokens.attention_mask,
-            prompt_input_ids=prompt_tokens.input_ids,
-            prompt_attention_mask=prompt_tokens.attention_mask,
-        )
+        output = model(**inputs)
     generation_time = time.time() - t0
 
     # --- Save audio ---
     import soundfile as sf
-    audio_arr = generation.cpu().numpy().squeeze()
+    audio_arr = output.waveform.squeeze().cpu().numpy()
     sample_rate = model.config.sampling_rate
     sf.write(wav_path, audio_arr, sample_rate)
 
@@ -157,9 +118,8 @@ def generate(model_tuple, text, reference_audio_path=None, output_filename=None)
         "audio_duration": audio_duration,
         "text": text,
         "language": LANGUAGE,
-        "model": model_name,
-        "reference_audio": reference_audio_path,
-        "voice_description": VOICE_DESCRIPTION,
+        "model": MODEL_NAME,
+        "reference_audio": None,
     }
 
 
@@ -168,10 +128,10 @@ def generate(model_tuple, text, reference_audio_path=None, output_filename=None)
 # ============================================================
 if __name__ == "__main__":
     print("=" * 60)
-    print("Hindi TTS Pipeline — Indic Parler-TTS")
+    print("Hindi TTS Pipeline — Meta MMS-TTS")
     print("=" * 60)
 
-    # Reference audio (for eval comparison, not for cloning)
+    # Reference audio (for eval comparison only, not used in generation)
     ref_candidates = [
         os.path.join(REFERENCE_DIR, f)
         for f in os.listdir(REFERENCE_DIR)
@@ -179,10 +139,6 @@ if __name__ == "__main__":
     ] if os.path.exists(REFERENCE_DIR) else []
 
     reference_audio = ref_candidates[0] if ref_candidates else None
-    if reference_audio:
-        print(f"\n[INFO] Reference audio (for eval only): {reference_audio}")
-    else:
-        print(f"\n[INFO] No reference audio found — eval will skip speaker similarity")
 
     # Load model (cold start)
     print("\n--- Cold start load ---")
@@ -203,8 +159,8 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("HINDI PIPELINE SUMMARY")
     print("=" * 60)
-    print(f"  Model:            {result2['model']}")
-    print(f"  Voice:            description-based (no cloning)")
+    print(f"  Model:            {MODEL_NAME}")
+    print(f"  Voice:            fixed MMS-TTS speaker (no cloning)")
     print(f"  Test text:        \"{test_text[:50]}...\"")
     print(f"  Gen 1 (warmup):   {result1['generation_time']:.2f}s → {result1['audio_duration']:.2f}s audio")
     print(f"  Gen 2 (warm):     {result2['generation_time']:.2f}s → {result2['audio_duration']:.2f}s audio")
