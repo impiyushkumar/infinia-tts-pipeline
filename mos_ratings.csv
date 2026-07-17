@@ -1,7 +1,7 @@
 clip_filename,language,model,category,mos_score,notes
-en_test_01_warmup.wav,English,XTTS-v2,warmup,4,
-en_test_02_warm.wav,English,XTTS-v2,benchmark,4,
-hi_test_01_warmup.wav,Hindi,MMS-TTS-hin,warmup,3,
-hi_test_02_warm.wav,Hindi,MMS-TTS-hin,benchmark,3,
-ar_test_01_warmup.wav,Arabic,XTTS-v2,warmup,3,
-ar_test_02_warm.wav,Arabic,XTTS-v2,benchmark,3,
+en_test_01_warmup.wav,English,XTTS-v2,warmup,4,Natural prosody clear articulation
+en_test_02_warm.wav,English,XTTS-v2,benchmark,4,Natural prosody clear articulation
+hi_test_01_warmup.wav,Hindi,MMS-TTS-hin,warmup,3,Intelligible but flat intonation and robotic quality
+hi_test_02_warm.wav,Hindi,MMS-TTS-hin,benchmark,3,Intelligible but flat intonation and robotic quality
+ar_test_01_warmup.wav,Arabic,XTTS-v2,warmup,3,Understandable but noticeable accent artifacts
+ar_test_02_warm.wav,Arabic,XTTS-v2,benchmark,3,Understandable but noticeable accent artifacts
