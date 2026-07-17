@@ -2,14 +2,14 @@
 
 ## Executive Summary
 
-This case study evaluates multilingual text-to-speech across English, Hindi, and Arabic on a Colab T4 GPU, using two models: **XTTS-v2** (English + Arabic, with voice cloning) and **Meta MMS-TTS** (Hindi, fixed speaker). All three languages meet the RTF target (≤0.5), with English achieving near-perfect intelligibility (0% WER) and strong voice cloning fidelity (0.97 cosine similarity). Hindi and Arabic show elevated WER (35% and 26.7% respectively) — consistent with the brief's prediction that current fast TTS models underperform on non-English languages. This is the central finding: **speed is solved, but non-English quality is the real gap in the current open-source TTS landscape.**
+This case study evaluates multilingual text-to-speech across English, Hindi, and Arabic on a Colab T4 GPU, using two models: **XTTS-v2** (English + Arabic, with voice cloning from a LJSpeech reference) and **Meta MMS-TTS** (Hindi, fixed speaker). All three languages meet the RTF target (≤0.5), with English achieving perfect intelligibility (0% WER) and near-perfect voice cloning fidelity (0.99 cosine similarity). Hindi and Arabic show elevated WER (35–50% and 13.3% respectively) — consistent with the brief's prediction that current fast TTS models underperform on non-English languages. Arabic narrowly misses the 10% WER target at 13.3%. This is the central finding: **speed is solved, but non-English quality is the real gap in the current open-source TTS landscape.**
 
 ## Per-Language Results & Recommendations
 
 ### English — XTTS-v2
 **Verdict: Production-viable with chunking.**
 
-XTTS-v2 delivers excellent English output: natural prosody, high intelligibility (0% WER), and strong voice cloning (0.97 similarity). RTF of 0.439 comfortably beats the 0.5 target. MOS of 4/5 reflects genuinely good audio quality.
+XTTS-v2 delivers excellent English output: natural prosody, high intelligibility (0% WER), and near-perfect voice cloning (0.9911 similarity from LJSpeech reference). RTF of 0.390 comfortably beats the 0.5 target. MOS of 4/5 reflects genuinely good audio quality.
 
 **Limitation**: Truncates input beyond ~250 characters. Production deployments must chunk long text into sentences before synthesis.
 
@@ -18,20 +18,20 @@ XTTS-v2 delivers excellent English output: natural prosody, high intelligibility
 ### Hindi — Meta MMS-TTS
 **Verdict: Acceptable for prototyping, not production.**
 
-MMS-TTS is extremely fast (RTF 0.018) and produces intelligible Hindi speech, but with noticeable robotic quality (MOS 3/5). The 35% WER is partly inflated by Whisper's Hindi ASR errors, but the underlying audio does have prosody issues — flat intonation, unnatural pauses. No voice cloning available (fixed speaker).
+MMS-TTS is extremely fast (RTF 0.018) and produces intelligible Hindi speech, but with noticeable robotic quality (MOS 3/5). WER showed significant run-to-run variance: 35% in one run, 50% in another — this non-determinism is itself a finding that production deployments must account for. No voice cloning available (fixed speaker). Confirmed experimentally that output is unaffected by reference audio presence.
 
-**Limitation**: Cannot handle code-switched Hindi-English text (common in Indian speech). Numbers in Devanagari are severely garbled (135% WER). No voice cloning.
+**Limitation**: Cannot handle code-switched Hindi-English text (common in Indian speech). Numbers in Devanagari are severely garbled (135% WER). No voice cloning. Non-deterministic output.
 
-**Recommendation**: For production Hindi TTS with cloning, evaluate fine-tuning XTTS-v2 on Hindi data or waiting for Indic Parler-TTS to become publicly accessible (currently gated). MMS-TTS is a reasonable baseline for low-latency applications where voice identity doesn't matter.
+**Recommendation**: For production Hindi TTS with cloning, evaluate fine-tuning XTTS-v2 on Hindi data or waiting for Indic Parler-TTS to become publicly accessible (currently gated on HuggingFace). MMS-TTS is a reasonable baseline for low-latency applications where voice identity doesn't matter.
 
 ### Arabic — XTTS-v2
-**Verdict: Functional but quality gap vs English.**
+**Verdict: Close to target, best available open-source option.**
 
-XTTS-v2 handles Modern Standard Arabic with reasonable intelligibility and good voice cloning (0.94 similarity), but WER of 26.7% reveals pronunciation errors on certain phonemes. MOS of 3/5 reflects perceptible accent/prosody issues. RTF (0.413) meets the speed target.
+XTTS-v2 handles Modern Standard Arabic with reasonable intelligibility and excellent voice cloning (0.9896 similarity). WER of 13.3% is a close miss on the 10% target — better than expected given the brief's warning. MOS of 3/5 reflects some prosody artifacts. RTF (0.390) meets the speed target.
 
 **Limitation**: Shorter context window for Arabic (~166 chars vs ~250 for English). Numbers and dates cause significant WER spikes (73.3%).
 
-**Recommendation**: XTTS-v2 is the best available open-source option for Arabic TTS with cloning. Quality can be improved by fine-tuning on MSA data. For production, implement aggressive text preprocessing (number spelling, sentence chunking at ≤150 chars).
+**Recommendation**: XTTS-v2 is the best available open-source option for Arabic TTS with cloning. The 13.3% WER could likely be improved with fine-tuning on MSA data. For production, implement aggressive text preprocessing (number spelling, sentence chunking at ≤150 chars).
 
 ## Failure Modes Observed
 
@@ -51,7 +51,8 @@ The Colab environment required extensive dependency management:
 - **XTTS-v2 long text**: Silent truncation beyond ~250 chars (English) / ~166 chars (Arabic). No error raised — audio just stops.
 
 ### 3. Metric Limitations
-- **Round-trip WER** inflates error rates for non-English languages because Whisper's ASR is less accurate for Hindi/Arabic. The 35% Hindi WER includes both TTS errors AND ASR errors — they cannot be separated without human transcription.
+- **Round-trip WER** inflates error rates for non-English languages because Whisper's ASR is less accurate for Hindi/Arabic. The Hindi WER (35–50%) includes both TTS errors AND ASR errors — they cannot be separated without human transcription.
+- **WER run-to-run variance**: Hindi WER varied between 35% and 50% across identical runs. This is caused by non-deterministic inference in MMS-TTS, compounded by Whisper ASR sensitivity. This variance is a real finding — production systems need deterministic inference or multi-sample averaging.
 - **MFCC cosine similarity** is a simpler proxy than dedicated speaker-embedding models (resemblyzer was dropped due to numpy 2.x incompatibility). It captures timbral similarity but is less robust to prosody/content variations.
 - **MOS**: Single rater (the author). A proper MOS study requires 15+ naive raters. Results should be interpreted as directional, not statistically significant.
 
@@ -64,17 +65,18 @@ The Colab environment required extensive dependency management:
 5. **More edge cases**: SSML support, emotional tone, whispered speech, proper nouns, acronyms, punctuation effects, multi-speaker conversations.
 6. **Speaker similarity**: A proper speaker-embedding model (e.g., ECAPA-TDNN or resemblyzer with numpy 1.x) would give more meaningful similarity scores than MFCC cosine.
 7. **Diacritized Arabic**: Testing with fully diacritized Arabic text (tashkeel) would isolate whether WER issues come from pronunciation ambiguity or model quality.
+8. **Deterministic inference**: Setting random seeds for MMS-TTS to eliminate run-to-run variance and get stable WER measurements.
 
 ## Reproducibility
 
-All code, generated clips, and reference audio are in the repository. To reproduce:
+All code, generated clips, and reference audio are in the repository. Reference audio sourced from LJSpeech (public domain).
 
 ```bash
 # 1. Open in Google Colab with T4 GPU
 # 2. Clone the repo and run setup
 %run scripts/setup_colab.py
 
-# 3. Upload reference audio to reference_clips/
+# 3. Upload reference audio (LJSpeech clip) to reference_clips/
 
 # 4. Run pipelines
 %run scripts/pipeline_english.py

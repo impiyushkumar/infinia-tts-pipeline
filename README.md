@@ -32,9 +32,9 @@ Benchmarking multilingual TTS (English, Arabic, Hindi) on Colab T4 with real met
 
 | Metric | English (XTTS-v2) | Hindi (MMS-TTS) | Arabic (XTTS-v2) |
 |---|---|---|---|
-| RTF (target ≤0.5) | 0.439 ✓ | 0.018 ✓ | 0.413 ✓ |
-| WER (target ≤10%) | 0.0% ✓ | 35.0% ✗ | 26.7% ✗ |
-| Speaker Sim (target ≥0.75) | 0.9735 ✓ | N/A (no cloning) | 0.9373 ✓ |
+| RTF (target ≤0.5) | 0.390 ✓ | 0.018 ✓ | 0.390 ✓ |
+| WER (target ≤10%) | 0.0% ✓ | 35–50% ✗ | 13.3% ✗ |
+| Speaker Sim (target ≥0.75) | 0.9911 ✓ | N/A (no cloning) | 0.9896 ✓ |
 | MOS (target ≥4.0) | 4/5 ✓ | 3/5 ✗ | 3/5 ✗ |
 
 ## Models Used

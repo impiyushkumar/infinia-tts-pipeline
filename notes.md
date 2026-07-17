@@ -14,6 +14,13 @@
 | XTTS-v2 | `coqui-tts` (community fork) — `tts_models/multilingual/multi-dataset/xtts_v2` | English, Arabic | Yes (reference audio) |
 | MMS-TTS Hindi | `facebook/mms-tts-hin` via `transformers` VitsModel | Hindi | No (fixed speaker) |
 
+## Reference Audio
+
+- **Source**: LJSpeech dataset (single female English speaker, public domain)
+- **Usage**: Voice cloning reference for XTTS-v2 (English + Arabic)
+- **Location**: `reference_clips/`
+- **Note**: MMS-TTS Hindi does not use reference audio — confirmed experimentally that output is identical regardless of reference clip presence.
+
 ### Model Selection Rationale
 
 - **Chatterbox** (original English primary): Dropped — persistent build failures on Colab Python 3.12.
@@ -27,17 +34,17 @@
 
 | Filename | Model | Config | Metrics | Notes |
 |---|---|---|---|---|
-| `en_test_01_warmup.wav` | XTTS-v2 | language="en", cloned from reference | RTF ~1.465 (cold) | First generation, includes model warmup |
-| `en_test_02_warm.wav` | XTTS-v2 | language="en", cloned from reference | RTF 0.439, WER 0%, sim 0.9735, MOS 4 | **Benchmark clip** — warm inference |
-| `edge_01_numbers_en.wav` | XTTS-v2 | language="en", cloned from reference | WER 17.6% | Edge case: numbers/dates |
-| `edge_03_long_sentence_en.wav` | XTTS-v2 | language="en", cloned from reference | Text truncated ~250 chars | Edge case: 30+ words |
+| `en_test_01_warmup.wav` | XTTS-v2 | language="en", cloned from LJSpeech ref | RTF ~1.5 (cold) | First generation, includes model warmup |
+| `en_test_02_warm.wav` | XTTS-v2 | language="en", cloned from LJSpeech ref | RTF 0.390, WER 0%, sim 0.9911, MOS 4 | **Benchmark clip** — warm inference |
+| `edge_01_numbers_en.wav` | XTTS-v2 | language="en", cloned from LJSpeech ref | WER 17.6% | Edge case: numbers/dates |
+| `edge_03_long_sentence_en.wav` | XTTS-v2 | language="en", cloned from LJSpeech ref | Text truncated ~250 chars | Edge case: 30+ words |
 
 ### Hindi Clips (`clips/hindi/`)
 
 | Filename | Model | Config | Metrics | Notes |
 |---|---|---|---|---|
 | `hi_test_01_warmup.wav` | MMS-TTS | facebook/mms-tts-hin, fixed speaker | RTF ~0.024 (cold) | First generation |
-| `hi_test_02_warm.wav` | MMS-TTS | facebook/mms-tts-hin, fixed speaker | RTF 0.018, WER 35%, MOS 3 | **Benchmark clip** — warm inference |
+| `hi_test_02_warm.wav` | MMS-TTS | facebook/mms-tts-hin, fixed speaker | RTF 0.018, WER 35–50%, MOS 3 | **Benchmark clip** — warm inference |
 | `edge_01_numbers_hi.wav` | MMS-TTS | facebook/mms-tts-hin, fixed speaker | WER 135.3% | Edge case: numbers/dates (severe) |
 | `edge_02_codeswitching_hi.wav` | MMS-TTS | facebook/mms-tts-hin, fixed speaker | WER ~80%+ | Edge case: Hindi-English mixed |
 
@@ -45,16 +52,16 @@
 
 | Filename | Model | Config | Metrics | Notes |
 |---|---|---|---|---|
-| `ar_test_01_warmup.wav` | XTTS-v2 | language="ar", cloned from reference | RTF ~1.3 (cold) | First generation |
-| `ar_test_02_warm.wav` | XTTS-v2 | language="ar", cloned from reference | RTF 0.413, WER 26.7%, sim 0.9373, MOS 3 | **Benchmark clip** — warm inference |
-| `edge_01_numbers_ar.wav` | XTTS-v2 | language="ar", cloned from reference | WER 73.3% | Edge case: numbers/dates |
-| `edge_03_long_sentence_ar.wav` | XTTS-v2 | language="ar", cloned from reference | Text truncated ~166 chars | Edge case: 30+ words |
+| `ar_test_01_warmup.wav` | XTTS-v2 | language="ar", cloned from LJSpeech ref | RTF ~1.3 (cold) | First generation |
+| `ar_test_02_warm.wav` | XTTS-v2 | language="ar", cloned from LJSpeech ref | RTF 0.390, WER 13.3%, sim 0.9896, MOS 3 | **Benchmark clip** — warm inference |
+| `edge_01_numbers_ar.wav` | XTTS-v2 | language="ar", cloned from LJSpeech ref | WER 73.3% | Edge case: numbers/dates |
+| `edge_03_long_sentence_ar.wav` | XTTS-v2 | language="ar", cloned from LJSpeech ref | Text truncated ~166 chars | Edge case: 30+ words |
 
 ### Reference Clips (`reference_clips/`)
 
-| Filename | Purpose |
-|---|---|
-| *(user-uploaded file)* | Voice reference for XTTS-v2 cloning (English + Arabic) |
+| Filename | Source | Purpose |
+|---|---|---|
+| LJSpeech clip | LJSpeech dataset (public domain) | Voice reference for XTTS-v2 cloning (English + Arabic) |
 
 ## Eval Harness Dependencies
 
