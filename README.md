@@ -4,11 +4,17 @@
 
 Benchmarking multilingual TTS (English, Arabic, Hindi) on Colab T4 with real metrics.
 
+## Audio Clips & Reference Files
+
+All generated audio clips (English, Hindi, Arabic — including edge cases) and the reference voice clip are here:
+**[Google Drive Folder](https://drive.google.com/drive/folders/1aUS_M0GYqBeaCgYWvzaHbnVcxI8VcNEr?usp=sharing)**
+
 ## Quick Start (Colab)
 
 1. Open a new Colab notebook, set runtime to **GPU → T4**
 2. Clone this repo and upload a reference voice clip (~10-20s WAV) to `reference_clips/`
 3. Run scripts in order:
+
 
 ```python
 # 1. Setup environment
@@ -84,11 +90,11 @@ infinia-tts-case-study/
 - [x] Step 1: Colab setup + dependency pinning
 - [x] Step 2: English pipeline (XTTS-v2)
 - [x] Step 3: Eval harness (RTF, WER, MFCC speaker similarity)
-- [x] Step 4: English eval — RTF 0.439, WER 0%, sim 0.9735
+- [x] Step 4: English eval — RTF 0.390, WER 0%, sim 0.9911
 - [x] Step 5: Hindi pipeline (MMS-TTS)
 - [x] Step 6: Hindi eval — RTF 0.018, WER 35%
 - [x] Step 7: Arabic pipeline (XTTS-v2)
-- [x] Step 8: Arabic eval — RTF 0.413, WER 26.7%, sim 0.9373
+- [x] Step 8: Arabic eval — RTF 0.390, WER 13.3%, sim 0.9896
 - [x] Step 9: Edge cases (numbers, code-switching, long text)
 - [x] Step 10: MOS ratings (single rater)
 - [x] Step 11: Results table, notes.md, write-up
